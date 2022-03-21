@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.5.0) (access/AccessControl.sol)
+// OpenZeppelin Contracts v4.4.1 (token/ERC1155/ERC1155.sol)
 
 pragma solidity ^0.8.0;
 
@@ -17,8 +17,6 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
 
     // 代币id ==> (账户地址 --> 持有个数)
     mapping(uint256 => mapping(address => uint256)) private _balances;
-    // todo 账户 ==> (代币id --> 持有个数)
-    // mapping(address => mapping(uint256 => uint256)) private _holds;
     // 原持有人地址 ==> (授权地址 --> 授权状态T/F)
     mapping(address => mapping(address => bool)) private _operatorApprovals;
     // 授权部分数量
@@ -30,36 +28,27 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
 
     // ------- 错误信息 -------
     // 
-    // ERC1155: caller is not owner or approved amount insufficient
-    // 你不是代币持有者或被授权的可使用数量不足
+    // ERC1155: caller is not owner or approved amount insufficient     你不是代币持有者或被授权的可使用数量不足
     string constant Permission_Insufficient = "\xE4\xBD\xA0\xE4\xB8\x8D\xE6\x98\xAF\xE4\xBB\xA3\xE5\xB8\x81\xE6\x8C\x81\xE6\x9C\x89\xE8\x80\x85\xE6\x88\x96\xE8\xA2\xAB\xE6\x8E\x88\xE6\x9D\x83\xE7\x9A\x84\xE5\x8F\xAF\xE4\xBD\xBF\xE7\x94\xA8\xE6\x95\xB0\xE9\x87\x8F\xE4\xB8\x8D\xE8\xB6\xB3";
-    // ERC1155: cannot transfer or mint to the zero address
-    // 铸币或转移时to地址不能为空
+    // ERC1155: cannot transfer or mint to the zero address     铸币或转移时to地址不能为空
     string constant To_Empty_Address = "\xE9\x93\xB8\xE5\xB8\x81\xE6\x88\x96\xE8\xBD\xAC\xE7\xA7\xBB\xE6\x97\xB6\x74\x6F\xE5\x9C\xB0\xE5\x9D\x80\xE4\xB8\x8D\xE8\x83\xBD\xE4\xB8\xBA\xE7\xA9\xBA";
-    // ERC1155: burn from the zero address
-    // 销毁时from地址不能为空
+    // ERC1155: burn from the zero address      销毁时from地址不能为空
     string constant From_Empty_Address = "\xE9\x94\x80\xE6\xAF\x81\xE6\x97\xB6\x66\x72\x6F\x6D\xE5\x9C\xB0\xE5\x9D\x80\xE4\xB8\x8D\xE8\x83\xBD\xE4\xB8\xBA\xE7\xA9\xBA";
-    // ERC1155: burn amount exceeds balance
-    // 销毁数量超过可用数量
+    // ERC1155: burn amount exceeds balance     销毁数量超过可用数量
     string constant Exceeds_Balance = "\xE9\x94\x80\xE6\xAF\x81\xE6\x95\xB0\xE9\x87\x8F\xE8\xB6\x85\xE8\xBF\x87\xE5\x8F\xAF\xE7\x94\xA8\xE6\x95\xB0\xE9\x87\x8F";
-    // ERC1155: args array length mismatch
-    // 数组参数长度不匹配
+    // ERC1155: args array length mismatch      数组参数长度不匹配
     string constant Lenght_Mismatch = "\xE6\x95\xB0\xE7\xBB\x84\xE5\x8F\x82\xE6\x95\xB0\xE9\x95\xBF\xE5\xBA\xA6\xE4\xB8\x8D\xE5\x8C\xB9\xE9\x85\x8D";
-    // ERC1155: setting approval status for self
-    // 授权给自己没有意义
+    // ERC1155: setting approval status for self        授权给自己没有意义
     string constant Approval_To_Self = "\xE6\x8E\x88\xE6\x9D\x83\xE7\xBB\x99\xE8\x87\xAA\xE5\xB7\xB1\xE6\xB2\xA1\xE6\x9C\x89\xE6\x84\x8F\xE4\xB9\x89";
-    // ERC1155: balance query for the zero address
-    // 查询地址不能为空
+    // ERC1155: balance query for the zero address      查询地址不能为空
     string constant Query_Empty_Address = "\xE6\x9F\xA5\xE8\xAF\xA2\xE5\x9C\xB0\xE5\x9D\x80\xE4\xB8\x8D\xE8\x83\xBD\xE4\xB8\xBA\xE7\xA9\xBA";
-    // ERC1155: insufficient balance for transfer
-    // 可用代币数量不足
+    // ERC1155: insufficient balance for transfer       可用代币数量不足
     string constant Insufficient_Balance = "\xE5\x8F\xAF\xE7\x94\xA8\xE4\xBB\xA3\xE5\xB8\x81\xE6\x95\xB0\xE9\x87\x8F\xE4\xB8\x8D\xE8\xB6\xB3";
-    // uri cannot be empty
-    // uri不能为空
+    // uri cannot be empty      uri不能为空
     string constant Empty_URI = "\x75\x72\x69\xE4\xB8\x8D\xE8\x83\xBD\xE4\xB8\xBA\xE7\xA9\xBA";
-    // ERC1155: ERC1155Receiver rejected tokens
+    // ERC1155: ERC1155Receiver rejected tokens     ERC1155Receiver拒绝接受代币
     string constant Rejected_Tokens = "\x45\x52\x43\x31\x31\x35\x35\x52\x65\x63\x65\x69\x76\x65\x72\xE6\x8B\x92\xE7\xBB\x9D\xE6\x8E\xA5\xE5\x8F\x97\xE4\xBB\xA3\xE5\xB8\x81";
-    // ERC1155: transfer to non ERC1155Receiver implementer
+    // ERC1155: transfer to non ERC1155Receiver implementer     未实现ERC1155Receiver接口
     string constant Interface_Not_Implement = "\xE6\x9C\xAA\xE5\xAE\x9E\xE7\x8E\xB0\x45\x52\x43\x31\x31\x35\x35\x52\x65\x63\x65\x69\x76\x65\x72\xE6\x8E\xA5\xE5\x8F\xA3";
 
 
@@ -137,12 +126,6 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         return batchBalances;
     }
 
-    // todo 查询某个账户下所有代币及对应数量 
-    // https://www.cnblogs.com/flyingeagle/p/10140054.html
-    // function tokensOf(address memory account) public view returns(uint256[] memory, uint256[] memory) {
-    //     mapping (uint256 => uint256) mp = _holds[account];
-    // }
-
     // IERC1155规定的方法
     function setApprovalForAll(address operator, bool approved) public virtual override {
         _setApprovalForAll(_msgSender(), operator, approved);
@@ -212,10 +195,8 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         require(fromBalance >= amount, Insufficient_Balance);
         unchecked {
             _balances[id][from] = fromBalance - amount;
-            // _holds[from][id] = fromBalance - amount;
         }
         _balances[id][to] += amount;
-        // _holds[to][id] += amount;
 
         emit TransferSingle(operator, from, to, id, amount);
 
@@ -244,10 +225,8 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
             require(fromBalance >= amount, Insufficient_Balance);
             unchecked {
                 _balances[id][from] = fromBalance - amount;
-                // _holds[from][id] = fromBalance - amount;
             }
             _balances[id][to] += amount;
-            // _holds[to][id] += amount;
         }
 
         emit TransferBatch(operator, from, to, ids, amounts);
@@ -281,8 +260,6 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         // 设置uri
         _setURI(id, _uri);
         _balances[id][to] += amount;
-        // if (_holds[to][id] == 0){}
-        // _holds[to][id] += amount;
         emit TransferSingle(operator, address(0), to, id, amount);
 
         _afterTokenTransfer(operator, address(0), to, ids, amounts, data);
@@ -310,7 +287,6 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
 
         for (uint256 i = 0; i < ids.length; i++) {
             _balances[ids[i]][to] += amounts[i];
-            // _holds[to][ids[i]] += amounts[i];
             _setURI(ids[i], uris[i]);
         }
 
