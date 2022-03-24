@@ -53,19 +53,19 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
 
 
     // 初始化构造方法
-    constructor(string memory name_, string memory symbol_) {
-        _name = name_;
-        _symbol = symbol_;
+    constructor(string memory name, string memory symbol) {
+        _name = name;
+        _symbol = symbol;
     }
 
-    // ------- 转移、销毁权限校验 -------
-    modifier txOrBurnPermission(address from, uint256 tokenId) {
-        require(
-            from == _msgSender() || isApprovedForAll(from, _msgSender()) || howManyApproved(from, _msgSender(), tokenId) > 0,
-            Permission_Insufficient
-        );
-        _;
-    }
+    // ------- 转移、销毁权限校验 已集成到beforeTransfer中 -------
+    // modifier txOrBurnPermission(address from, uint256 tokenId) {
+    //     require(
+    //         from == _msgSender() || isApprovedForAll(from, _msgSender()) || howManyApproved(from, _msgSender(), tokenId) > 0,
+    //         Permission_Insufficient
+    //     );
+    //     _;
+    // }
 
     // ------- to空地址校验 -------
     modifier toEmptyAddressCheck(address to) {
@@ -153,7 +153,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         uint256 id,
         uint256 amount,
         bytes memory data
-    ) public virtual override txOrBurnPermission(from, id) {
+    ) public virtual override {
         _safeTransferFrom(from, to, id, amount, data);
     }
 
@@ -302,7 +302,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         address from,
         uint256 id,
         uint256 amount
-    ) external virtual txOrBurnPermission(from, id) {
+    ) external virtual {
         require(from != address(0), From_Empty_Address);
 
         address operator = _msgSender();
@@ -389,17 +389,14 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         bytes memory data
     ) internal virtual {
         if (from != address(0)) {
-            // 转账或销毁时, 如果不是完全授权
-            if (!isApprovedForAll(from, operator)) {
+            // 转账或销毁时, 如果是代币持有者或完全授权
+            if (operator == from || isApprovedForAll(from, operator)) {
+                // 正常
+            } else {
                 for (uint256 i = 0; i < ids.length; i++) {
                     // Approved amount insufficient 授权数量不足
                     require(howManyApproved(from, operator, ids[i]) >= amounts[i], Permission_Insufficient);
                 }
-            } else if (_msgSender() == from || isApprovedForAll(from, operator)) {
-                // 正常
-            } else {
-                // ERC1155: transfer caller is not owner nor approved
-                revert(Permission_Insufficient);
             }
         } else if (to == address(0) || data.length == 0) {
             // 没有意义，只是为了消掉警告
@@ -417,9 +414,12 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         bytes memory data
     ) internal virtual {
         if (from != address(0)) {
-            if (!isApprovedForAll(from, operator)) {
+            if (operator == from || isApprovedForAll(from, operator)) {
+                // 正常
+            } else {
                 for (uint256 i = 0; i < ids.length; i++) {
-                    // 授权可用数量减少，0.8版本的solidity内置safeMath，uint(0)-正数时自动回退
+                    // 授权可用数量减少，0.8版本的solidity内置safeMath，uint(0)-正数时自动回退，但是没有错误提示!
+                    require(_approvalCounts[from][operator][ids[i]] >= amounts[i], Permission_Insufficient);
                     _approvalCounts[from][operator][ids[i]] -= amounts[i];
                 }
             }
