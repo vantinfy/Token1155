@@ -27,13 +27,13 @@ contract AccessControl is Context {
     // ------- 铸币权限校验 -------
     modifier mintPermissionVerified() {
         if (switchOn) {
-            require(_msgSender() == owner() || members[_msgSender()], "Insufficient permissions");
+            require(_msgSender() == owner() || members[_msgSender()], "Insufficient permissions for mint");
         }
         _;
     }
 
     // ACL开关
-    function enableACL(bool enable) public {
+    function enableACL(bool enable) public onlyOwner {
         switchOn = enable;
     }
 
