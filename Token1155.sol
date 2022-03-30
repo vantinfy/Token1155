@@ -21,10 +21,11 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     mapping(address => mapping(address => bool)) private _operatorApprovals;
     // 授权部分数量
     mapping(address => mapping(address => mapping(uint256 => uint256))) private _approvalCounts;
-    mapping(uint256 => string) internal idToUri;
-
-    string private _name;   // 代币名
-    string private _symbol; // 代币符号
+    // 对本合约发行的fungible-token通用元数据地址,客户端解析时需要将代币id与此uri结合
+    // 例如: https://token/{id}.json, 解析: strings.Replace(_uri, "{id}", string(tokenId))
+    string private _uri;
+    // nft记录
+    mapping(uint256 => bool) private _exists;
 
     // ------- 错误信息 -------
     // 
@@ -50,22 +51,14 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     string constant Rejected_Tokens = "\x45\x52\x43\x31\x31\x35\x35\x52\x65\x63\x65\x69\x76\x65\x72\xE6\x8B\x92\xE7\xBB\x9D\xE6\x8E\xA5\xE5\x8F\x97\xE4\xBB\xA3\xE5\xB8\x81";
     // ERC1155: transfer to non ERC1155Receiver implementer     未实现ERC1155Receiver接口
     string constant Interface_Not_Implement = "\xE6\x9C\xAA\xE5\xAE\x9E\xE7\x8E\xB0\x45\x52\x43\x31\x31\x35\x35\x52\x65\x63\x65\x69\x76\x65\x72\xE6\x8E\xA5\xE5\x8F\xA3";
+    // nft-id exists    nft-id已经存在
+    string constant NFT_Exists = "\x6E\x66\x74\x2D\x69\x64\xE5\xB7\xB2\xE7\xBB\x8F\xE5\xAD\x98\xE5\x9C\xA8";
 
 
     // 初始化构造方法
-    constructor(string memory name, string memory symbol) {
-        _name = name;
-        _symbol = symbol;
+    constructor(string memory uri_) {
+        _setURI(uri_);
     }
-
-    // ------- 转移、销毁权限校验 已集成到beforeTransfer中 -------
-    // modifier txOrBurnPermission(address from, uint256 tokenId) {
-    //     require(
-    //         from == _msgSender() || isApprovedForAll(from, _msgSender()) || howManyApproved(from, _msgSender(), tokenId) > 0,
-    //         Permission_Insufficient
-    //     );
-    //     _;
-    // }
 
     // ------- to空地址校验 -------
     modifier toEmptyAddressCheck(address to) {
@@ -79,6 +72,17 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         _;
     }
 
+    // 判断一个id是否为nft，规定最高位为1时为nft
+    function isNFT(uint256 id) internal pure returns (bool) {
+        if (id & uint256(0x8000000000000000000000000000000000000000000000000000000000000000) == 0) {
+            // 最高位为0 is fungible token
+            return false;
+        }else {
+            // none-fungible token
+            return true;
+        }
+    }
+
     // 支持IERC1155/IERC1155MetadataURI/IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
         return
@@ -87,19 +91,11 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
             super.supportsInterface(interfaceId); // super来自erc165，会判断是否支持165接口
     }
 
-    // IERC1155MetadataURI
+    // IERC1155MetadataURI---Clients calling this function must replace the `\{id\}` substring with the actual token type ID.
     function uri(uint256 id) public view virtual override returns (string memory) {
-        return idToUri[id];
-    }
-
-    // 获取代币名
-    function getName() external view returns (string memory) {
-        return _name;
-    }
-
-    // 获取代币符号
-    function getSymbol() external view returns (string memory) {
-        return _symbol;
+        // isNFT(id);
+        id;
+        return _uri;
     }
 
     // 查询地址不能为空
@@ -229,17 +225,23 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
             _balances[id][to] += amount;
         }
 
-        emit TransferBatch(operator, from, to, ids, amounts);
+        // emit TransferBatch(operator, from, to, ids, amounts);
 
         _afterTokenTransfer(operator, from, to, ids, amounts, data);
 
         _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data);
     }
 
-    // 重复id直接覆盖旧的uri
-    function _setURI(uint256 id, string memory newuri) internal virtual {
+    /**
+     * For example, the `https://token-cdn-domain/\{id\}.json` URI would be
+     * interpreted by clients as
+     * `https://token-cdn-domain/000000000000000000000000000000000000000000000000000000000004cce0.json`
+     * for token type ID 0x4cce0.
+     */ 
+    function _setURI(string memory newuri) internal virtual {
+        // 不允许uri为空
         require(bytes(newuri).length > 0, Empty_URI);
-        idToUri[id] = newuri;
+        _uri = newuri;
     }
 
     // 铸币to地址不能为空；此外，如果to是个合约地址，该合约必须实现IERC1155Receiver-onERC1155Received接口
@@ -247,9 +249,15 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         address to,
         uint256 id,
         uint256 amount,
-        string calldata _uri,
         bytes memory data
     ) external mintPermissionVerified toEmptyAddressCheck(to) {
+
+        // nft 数量只能为1，且未发行过
+        if (isNFT(id)) {
+            require(amount == 1 && !_exists[id], NFT_Exists);
+            // 标识存在
+            _exists[id] = true;
+        }
 
         address operator = _msgSender();
         uint256[] memory ids = _asSingletonArray(id);
@@ -257,8 +265,6 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
 
         _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
 
-        // 设置uri
-        _setURI(id, _uri);
         _balances[id][to] += amount;
         emit TransferSingle(operator, address(0), to, id, amount);
 
@@ -272,13 +278,11 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         address to,
         uint256[] memory ids,
         uint256[] memory amounts,
-        string[] calldata uris,
         bytes memory data
     ) external
     mintPermissionVerified
     toEmptyAddressCheck(to)
     lengthCheck(ids.length, amounts.length)
-    lengthCheck(ids.length, uris.length)
     {
 
         address operator = _msgSender();
@@ -286,11 +290,14 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
 
         for (uint256 i = 0; i < ids.length; i++) {
+            if (isNFT(ids[i])) {
+                require(amounts[i] == 1 && !_exists[ids[i]], NFT_Exists);
+                _exists[ids[i]] = true;
+            }
             _balances[ids[i]][to] += amounts[i];
-            _setURI(ids[i], uris[i]);
         }
 
-        emit TransferBatch(operator, address(0), to, ids, amounts);
+        // emit TransferBatch(operator, address(0), to, ids, amounts);
 
         _afterTokenTransfer(operator, address(0), to, ids, amounts, data);
 
@@ -315,6 +322,10 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         require(fromBalance >= amount, Exceeds_Balance);
         unchecked {
             _balances[id][from] = fromBalance - amount;
+            // 如果是销毁nft 置为false
+            if (isNFT(id)) {
+                _exists[id] = false;
+            }
         }
 
         emit TransferSingle(operator, from, address(0), id, amount);
@@ -342,10 +353,13 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
             require(fromBalance >= amount, Exceeds_Balance);
             unchecked {
                 _balances[id][from] = fromBalance - amount;
+                if (isNFT(id)) {
+                    _exists[id] = false;
+                }
             }
         }
 
-        emit TransferBatch(operator, from, address(0), ids, amounts);
+        // emit TransferBatch(operator, from, address(0), ids, amounts);
 
         _afterTokenTransfer(operator, from, address(0), ids, amounts, "");
     }
