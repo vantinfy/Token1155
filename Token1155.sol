@@ -17,13 +17,15 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
 
     // 代币id ==> (账户地址 --> 持有个数)
     mapping(uint256 => mapping(address => uint256)) private _balances;
+    // 代币id ==> 代币uri
+    mapping(uint256 => string) private uriMap;
     // 原持有人地址 ==> (授权地址 --> 授权状态T/F)
     mapping(address => mapping(address => bool)) private _operatorApprovals;
     // 授权部分数量
     mapping(address => mapping(address => mapping(uint256 => uint256))) private _approvalCounts;
     // 对本合约发行的fungible-token通用元数据地址,客户端解析时需要将代币id与此uri结合
     // 例如: https://token/{id}.json, 解析: strings.Replace(_uri, "{id}", string(tokenId))
-    string private _uri;
+    string private _baseuri;
     // nft记录
     // mapping(uint256 => bool) private _exists;
 
@@ -52,7 +54,11 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     // ERC1155: transfer to non ERC1155Receiver implementer     未实现ERC1155Receiver接口
     string constant Interface_Not_Implement = "\xE6\x9C\xAA\xE5\xAE\x9E\xE7\x8E\xB0\x45\x52\x43\x31\x31\x35\x35\x52\x65\x63\x65\x69\x76\x65\x72\xE6\x8E\xA5\xE5\x8F\xA3";
     // nft-id exists    nft-id已经存在
-    string constant NFT_Exists = "\x6E\x66\x74\x2D\x69\x64\xE5\xB7\xB2\xE7\xBB\x8F\xE5\xAD\x98\xE5\x9C\xA8";
+    // string constant NFT_Exists = "\x6E\x66\x74\x2D\x69\x64\xE5\xB7\xB2\xE7\xBB\x8F\xE5\xAD\x98\xE5\x9C\xA8";
+    // The token id already exists 该代币id已经存在
+    string constant Token_Exists = "\xE8\xAF\xA5\xE4\xBB\xA3\xE5\xB8\x81\x69\x64\xE5\xB7\xB2\xE7\xBB\x8F\xE5\xAD\x98\xE5\x9C\xA8";
+    // The token id does not exist 该代币id不存在
+    string constant Token_Not_Exists = "\xE8\xAF\xA5\xE4\xBB\xA3\xE5\xB8\x81\x69\x64\xE4\xB8\x8D\xE5\xAD\x98\xE5\x9C\xA8";
 
 
     // 初始化构造方法
@@ -102,7 +108,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     function uri(uint256 id) public view virtual override returns (string memory) {
         // isNFT(id);
         id;
-        return _uri;
+        return _baseuri;
     }
 
     // 查询地址不能为空
@@ -247,9 +253,83 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
      */ 
     function _setURI(string memory newuri) internal virtual {
         // 不允许uri为空
-        require(bytes(newuri).length > 0, Empty_URI);
-        _uri = newuri;
+        // require(bytes(newuri).length > 0, Empty_URI);
+        _baseuri = newuri;
     }
+
+    // --- demand start 配合新需求专门增加的方法 ---
+    // owner单独修改某个代币类别的uri
+    function reviseURI(uint256 id, string calldata newuri) external onlyOwner {
+        require(bytes(newuri).length > 0, Empty_URI);
+        require(bytes(uriMap[id]).length > 0, Token_Not_Exists);
+        uriMap[id] = newuri;
+    }
+
+    // 查询某个代币类别的uri
+    function queryURI(uint256 id) external view returns (string memory) {
+        return uriMap[id];
+    }
+
+    // 铸币同时设置uri 校验代币是否存在 如果已经存在只能调用增发方法
+    function mintExt(
+        address to,
+        uint256 id,
+        uint256 amount,
+        string calldata tokenUri,
+        bytes memory data
+    ) external mintPermissionVerified toEmptyAddressCheck(to) {
+        // 不使用baseUri而是为每种代币单独设置uri情况下 需要该uri非空
+        require(bytes(tokenUri).length > 0, Empty_URI);
+        // 为了避免增发时覆盖掉同种类代币的uri 已经存在的代币种类无法使用此方法铸造 调用mint方法(因为改方法不传uri参数)即可
+        require(bytes(uriMap[id]).length == 0, Token_Exists);
+        address operator = _msgSender();
+        uint256[] memory ids = _asSingletonArray(id);
+        uint256[] memory amounts = _asSingletonArray(amount);
+
+        _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
+
+        _balances[id][to] += amount;
+        uriMap[id] = tokenUri;
+        emit TransferSingle(operator, address(0), to, id, amount);
+
+        _afterTokenTransfer(operator, address(0), to, ids, amounts, data);
+
+        _doSafeTransferAcceptanceCheck(operator, address(0), to, id, amount, data);
+    }
+    
+    // 批量铸币同时为每种代币设置uri
+    function mintBatchExt(
+        address to,
+        uint256[] memory ids,
+        uint256[] memory amounts,
+        string[] calldata uris,
+        bytes memory data
+    ) external
+    mintPermissionVerified
+    toEmptyAddressCheck(to)
+    lengthCheck(ids.length, amounts.length)
+    lengthCheck(ids.length, uris.length)
+    {
+        address operator = _msgSender();
+
+        _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
+
+        for (uint256 i = 0; i < ids.length; i++) {
+            _balances[ids[i]][to] += amounts[i];
+            // 不使用baseUri而是为每种代币单独设置uri情况下 需要该uri非空
+            require(bytes(uris[i]).length > 0, Empty_URI);
+            // 已经存在的代币种类无法使用此方法铸造
+            require(bytes(uriMap[ids[i]]).length == 0, Token_Exists);
+            uriMap[ids[i]] = uris[i];
+        }
+
+        // emit TransferBatch(operator, address(0), to, ids, amounts);
+
+        _afterTokenTransfer(operator, address(0), to, ids, amounts, data);
+
+        _doSafeBatchTransferAcceptanceCheck(operator, address(0), to, ids, amounts, data);
+    }
+    // --- demand end ---
 
     // 铸币to地址不能为空；此外，如果to是个合约地址，该合约必须实现IERC1155Receiver-onERC1155Received接口
     function mint(
