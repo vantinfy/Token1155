@@ -25,7 +25,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     // 例如: https://token/{id}.json, 解析: strings.Replace(_uri, "{id}", string(tokenId))
     string private _uri;
     // nft记录
-    mapping(uint256 => bool) private _exists;
+    // mapping(uint256 => bool) private _exists;
 
     // ------- 错误信息 -------
     // 
@@ -72,16 +72,16 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         _;
     }
 
-    // 判断一个id是否为nft，规定最高位为1时为nft
-    function isNFT(uint256 id) internal pure returns (bool) {
-        if (id & uint256(0x8000000000000000000000000000000000000000000000000000000000000000) == 0) {
-            // 最高位为0 is fungible token
-            return false;
-        }else {
-            // none-fungible token
-            return true;
-        }
-    }
+    // deprecate 判断一个id是否为nft，规定最高位为1时为nft
+    // function isNFT(uint256 id) internal pure returns (bool) {
+    //     if (id & uint256(0x8000000000000000000000000000000000000000000000000000000000000000) == 0) {
+    //         // 最高位为0 is fungible token
+    //         return false;
+    //     }else {
+    //         // none-fungible token
+    //         return true;
+    //     }
+    // }
 
     // 支持IERC1155/IERC1155MetadataURI/IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
@@ -253,11 +253,11 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     ) external mintPermissionVerified toEmptyAddressCheck(to) {
 
         // nft 数量只能为1，且未发行过
-        if (isNFT(id)) {
-            require(amount == 1 && !_exists[id], NFT_Exists);
-            // 标识存在
-            _exists[id] = true;
-        }
+        // if (isNFT(id)) {
+        //     require(amount == 1 && !_exists[id], NFT_Exists);
+        //     // 标识存在
+        //     _exists[id] = true;
+        // }
 
         address operator = _msgSender();
         uint256[] memory ids = _asSingletonArray(id);
@@ -290,10 +290,10 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
 
         for (uint256 i = 0; i < ids.length; i++) {
-            if (isNFT(ids[i])) {
-                require(amounts[i] == 1 && !_exists[ids[i]], NFT_Exists);
-                _exists[ids[i]] = true;
-            }
+            // if (isNFT(ids[i])) {
+            //     require(amounts[i] == 1 && !_exists[ids[i]], NFT_Exists);
+            //     _exists[ids[i]] = true;
+            // }
             _balances[ids[i]][to] += amounts[i];
         }
 
@@ -323,9 +323,9 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         unchecked {
             _balances[id][from] = fromBalance - amount;
             // 如果是销毁nft 置为false
-            if (isNFT(id)) {
-                _exists[id] = false;
-            }
+            // if (isNFT(id)) {
+            //     _exists[id] = false;
+            // }
         }
 
         emit TransferSingle(operator, from, address(0), id, amount);
@@ -353,9 +353,9 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
             require(fromBalance >= amount, Exceeds_Balance);
             unchecked {
                 _balances[id][from] = fromBalance - amount;
-                if (isNFT(id)) {
-                    _exists[id] = false;
-                }
+                // if (isNFT(id)) {
+                //     _exists[id] = false;
+                // }
             }
         }
 
