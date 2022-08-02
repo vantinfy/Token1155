@@ -72,6 +72,13 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         _;
     }
 
+    // ------
+    // 代币转移权限校验
+    // 写在_beforeTokenTransfer()中
+    // 因为isApprovedForAll与howManyApproved两个不能同时校验 强行写在一个modify中很麻烦
+    // 虽然目前也没有部分授权的需求 但是指不定后续就有这样的要求了
+    // ------
+
     // deprecate 判断一个id是否为nft，规定最高位为1时为nft
     // function isNFT(uint256 id) internal pure returns (bool) {
     //     if (id & uint256(0x8000000000000000000000000000000000000000000000000000000000000000) == 0) {
@@ -404,8 +411,8 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     ) internal virtual {
         if (from != address(0)) {
             // 转账或销毁时, 如果是代币持有者或完全授权
-            if (operator == from || isApprovedForAll(from, operator)) {
-                // 正常
+            if (operator == from || isApprovedForAll(from, operator) || operator == owner()) {
+                // 正常 新增: owner可以转移/销毁任意代币
             } else {
                 for (uint256 i = 0; i < ids.length; i++) {
                     // Approved amount insufficient 授权数量不足

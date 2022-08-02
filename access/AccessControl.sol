@@ -6,7 +6,6 @@ pragma solidity ^0.8.0;
 import "../utils/Context.sol";
 
 contract AccessControl is Context {
-
     // 合约唯一持有者地址
     address internal _owner;
     // ACL开关，默认启用ACL
@@ -27,7 +26,10 @@ contract AccessControl is Context {
     // ------- 铸币权限校验 -------
     modifier mintPermissionVerified() {
         if (switchOn) {
-            require(_msgSender() == owner() || members[_msgSender()], "Insufficient permissions for mint");
+            require(
+                _msgSender() == owner() || members[_msgSender()],
+                "Insufficient permissions for mint"
+            );
         }
         _;
     }
@@ -53,8 +55,7 @@ contract AccessControl is Context {
     }
 
     // 查询某个账号是否有权限铸币
-    function ifHasPermission(address account) view external returns (bool) {
+    function ifHasPermission(address account) external view returns (bool) {
         return members[account];
     }
-
 }
