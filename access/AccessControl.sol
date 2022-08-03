@@ -13,8 +13,10 @@ contract AccessControl is Context {
     // 有权限的地址集合
     mapping(address => bool) internal members;
 
-    constructor() {
-        _owner = msg.sender;
+    constructor(address owner_) {
+        // 所有权地址不能为空
+        require(owner_ != address(0), "Ownership can not be zero address");
+        _owner = owner_;
     }
 
     // ------- 管理员权限 -------

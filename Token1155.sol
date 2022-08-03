@@ -65,9 +65,9 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     string constant Amounts_To_Length_Mismatch = "amounts'length should be the same with to's length";
 
 
-    // 初始化构造方法
-    constructor(string memory uri_) {
-        _setURI(uri_);
+    // 初始化构造方法 只设置owner
+    constructor(address owner) AccessControl(owner) {
+        _setURI("");
     }
 
     // ------- to空地址校验 -------
