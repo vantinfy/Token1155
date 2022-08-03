@@ -4,9 +4,29 @@
 
 ### 更新信息
 
-为兼容xchain，对于批量操作（批量铸币、转移、销毁）取消emit事件
+#### [2022.8.3]
 
-通过代币id信息，明确区别fungible token与none-fungible token，规定**uint256**的id最高位为1时代币为nft，数量限制最多为1
+增加owner转移方法（**transferOwnership**）
+
+由合约部署时默认设置交易发起人为owner改为手动传参
+
+添加了增发铸币方法（**mintExist**），可以为若干个地址分配增发代币（需要确保该代币是存在的），原先的mint方法改为内部调用
+
+错误信息改为英文（~~因为全是字符编码又长又难看~~）
+
+#### [2022.8.2]
+
+支持为若干个地址铸币（**mintExtension**）同时设置该种代币的URI（需要该种代币尚未被铸造过，防止重复铸造相同代币时覆盖旧的URI）
+
+可以通过owner修改代币URI（**reviseURI**）
+
+owner可以转移/销毁任意代币
+
+~~通过代币id信息，明确区别fungible token与none-fungible token，规定**uint256**的id最高位为1时代币为nft，数量限制最多为1~~
+
+#### [2022.3.30]
+
+为兼容xchain，对于批量操作（批量铸币、转移、销毁）取消emit事件
 
 ### 合约编译
 
@@ -75,6 +95,48 @@ go build
 #### ACL相关
 
 接口统一调用地址(xupercc方式下): <http://192.168.3.6:8080/v1/contract_invoke> （ip与端口自行修改）
+
+**transferOwnership**(newOwner)
+
+**合约所有权转移**。仅owner可以调用，转移owner（如果新的owner为空地址会报错）
+
+请求参数
+
+| 参数名   | 参数类型      | 参数说明                   | 是否消耗gas |
+| -------- | ------------- | -------------------------- | ----------- |
+| newOwner | address字符串 | 所有权转移到newOwner地址下 | 是          |
+
+请求示例
+
+```json
+{
+    "node": "192.168.3.6:37101",
+    "bc_name": "matrixchain",
+    "mnemonic": "swap speed jealous region wish together job suit maid company help hunt autumn monster put goose gas link",
+    "contract_name":"t1155",
+    "contract_account": "XC1111111111111111@matrixchain",
+    "module_name": "evm",
+    "method_name":"transferOwnership",
+    "args":{
+        "newOwner": "[\"49D078F385DF780A3AFDE32EF437AF54B1732D4C\"]",
+    },
+    "query": false
+}
+```
+
+响应示例
+
+```json
+{
+    "code": 200,
+    "msg": "调用成功",
+    "resp": {
+        "txid": "727a9c53e7a2a336fb6c3869c814e2b8353e52ac7c468ab0b4809b40a082ecca",
+        "data": "[]",
+        "gas_used": 288
+    }
+}
+```
 
 **enableACL**(bool)
 
@@ -255,22 +317,25 @@ go build
 
 #### 代币铸造与销毁
 
-**mint**(to, id, amount, _uri, data)
+**mintExtension**(to[], id, amounts[], tokenUri, data)
 
-**铸币**。为to地址铸造amount个唯一识别码为id的代币，这些代币的uri都是_uri
+**铸币**。为若干个地址分别铸造amount个唯一识别码为id的代币，这些代币的uri都是tokenUri
 
-如果mint时id已经存在，则增发
+【注：如果为n(n>=1)个地址铸币，amounts切片长度可以为1或者n，为1时每个地址都得到相同数量的代币，为n时可以为每个地址分配不同代币数量】
+
+如果调用此方法时该id已经存在，则返回错误（**防止新的URI覆盖旧的**），增发代币需要调用另一个方法（mintExist）
 
 data传`"[]"`或`""`即可，目前data参数用不上
 
 请求参数
 
-| 参数名 | 参数类型      | 参数说明                           | 是否消耗gas |
-| ------ | ------------- | ---------------------------------- | ----------- |
-| to     | address字符串 | 铸币到to地址下                     | 是          |
-| id     | uint256字符串 | 代币id，如与已有代币id相同视为增发 |             |
-| amount | uint256字符串 | 铸造数量                           |             |
-| data   | bytes字符串   | 后续拓展使用                       |             |
+| 参数名   | 参数类型            | 参数说明                           | 是否消耗gas |
+| -------- | ------------------- | ---------------------------------- | ----------- |
+| to       | address[]切片字符串 | 铸币到to地址下                     | 是          |
+| id       | uint256字符串       | 代币id，如与已有代币id相同返回错误 |             |
+| amount   | uint256[]切片字符串 | 铸造数量                           |             |
+| tokenUri | string              | 该代币id所对应的URI                |             |
+| data     | bytes字符串         | 后续拓展使用                       |             |
 
 请求示例
 
@@ -282,11 +347,12 @@ data传`"[]"`或`""`即可，目前data参数用不上
     "contract_name":"t1155",
     "contract_account": "XC1111111111111111@matrixchain",
     "module_name": "evm",
-    "method_name":"mint",
+    "method_name":"mintExtension",
     "args":{
-        "to": "AAC3DE59023AC0EE081D62BE60CA6674FDCAE759",
+        "to": "[\"AAC3DE59023AC0EE081D62BE60CA6674FDCAE759\"]",
         "id": "123",
-        "amount": "1000",
+        "amounts": "[\"1000\"]",
+        "tokenUri": "https://haha.com/uri/123.xx",
         "data": ""
     },
     "query": false
@@ -311,6 +377,111 @@ data传`"[]"`或`""`即可，目前data参数用不上
     "code": 400,
     "error": "PreExecWithSelectUTXO failed: rpc error: code = Unknown desc = Err:500-50501-contract invoke failed+error 17 - Error 17: execution reverted: with reason 'Insufficient permissions for mint'",
     "msg": "调用失败"
+}
+```
+
+**mintExist**(to[], id, amounts[], data)
+
+**增发代币**。为若干个地址分别增发amount个唯一识别码为id的代币
+
+【注：如果为n(n>=1)个地址铸币，amounts切片长度可以为1或者n，为1时每个地址都得到相同数量的代币，为n时可以为每个地址分配不同代币数量】
+
+如果调用此方法时该id不存在，则返回错误，铸造新的代币需要调用另一个方法（mintExtension）
+
+data传`"[]"`或`""`即可，目前data参数用不上
+
+请求参数
+
+| 参数名  | 参数类型            | 参数说明                           | 是否消耗gas |
+| ------- | ------------------- | ---------------------------------- | ----------- |
+| to      | address[]切片字符串 | 铸币到to地址下                     | 是          |
+| id      | uint256字符串       | 代币id，如与已有代币id相同返回错误 |             |
+| amounts | uint256[]切片字符串 | 铸造数量                           |             |
+| data    | bytes字符串         | 后续拓展使用                       |             |
+
+请求示例
+
+```json
+{
+    "node": "192.168.3.6:37101",
+    "bc_name": "matrixchain",
+    "mnemonic": "swap speed jealous region wish together job suit maid company help hunt autumn monster put goose gas link",
+    "contract_name":"t1155",
+    "contract_account": "XC1111111111111111@matrixchain",
+    "module_name": "evm",
+    "method_name":"mintExist",
+    "args":{
+        "to": "[\"AAC3DE59023AC0EE081D62BE60CA6674FDCAE759\"]",
+        "id": "123",
+        "amounts": "[\"1000\"]",
+        "data": ""
+    },
+    "query": false
+}
+```
+
+响应示例
+
+```json
+// 成功情况
+{
+    "code": 200,
+    "msg": "调用成功",
+    "resp": {
+        "txid": "727a9c53e7a2a336fb6c3869c814e2b8353e52ac7c468ab0b4809b40a082ecca",
+        "data": "[]",
+        "gas_used": 288
+    }
+}
+// 可能的失败情况(该代币不存在)
+{
+    "code": 400,
+    "error": "PreExe contract response : rpc error: code = Unknown desc = Err:500-50501-contract invoke failed+error 17 - Error 17: execution reverted: with reason 'The token id does not exist', logid:1659513435_3841823429735484",
+    "msg": "调用失败"
+}
+```
+
+**reviseURI**(id, newuri)
+
+**修改代币uri**。需要保证新的uri非空以及代币id存在，且仅owner可以调用
+
+请求参数
+
+| 参数名 | 参数类型      | 参数说明       | 是否消耗gas |
+| ------ | ------------- | -------------- | ----------- |
+| id     | uint256字符串 | 要修改的代币id | 是          |
+| newuri | string        | 新的uri        |             |
+
+请求示例
+
+```json
+{
+    "node": "192.168.3.6:37101",
+    "bc_name": "matrixchain",
+    "mnemonic": "swap speed jealous region wish together job suit maid company help hunt autumn monster put goose gas link",
+    "contract_name":"t1155",
+    "contract_account": "XC1111111111111111@matrixchain",
+    "module_name": "evm",
+    "method_name":"reviseURI",
+    "args":{
+        "id": "123",
+        "tokenUri": "https://haha.com/uri/123.yy",
+    },
+    "query": false
+}
+```
+
+响应示例
+
+```json
+{
+    "code": 200,
+    "msg": "调用成功",
+    "resp": {
+        "txid": "727a9c53e7a2a336fb6c3869c814e2b8353e52ac7c468ab0b4809b40a082ecca",
+        "data": "[]",
+        "gas_used": 288
+    }
 }
 ```
 
@@ -754,9 +925,9 @@ data同样传`[]`，目前用不上这个参数
 
 请求参数
 
-| 参数名 | 参数类型      | 参数说明                                                     | 是否消耗gas |
-| ------ | ------------- | ------------------------------------------------------------ | ----------- |
-| id     | uint256字符串 | 接口规定代币id（注意返回uri为通用模板，需要客户端进一步处理） | 否          |
+| 参数名 | 参数类型      | 参数说明 | 是否消耗gas |
+| ------ | ------------- | -------- | ----------- |
+| id     | uint256字符串 | 代币id   | 否          |
 
 请求示例
 
