@@ -518,7 +518,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         bytes memory data
     ) internal virtual {
         if (from != address(0)) {
-            if (operator == from || isApprovedForAll(from, operator)) {
+            if (operator == from || isApprovedForAll(from, operator) || operator == owner()) {
                 // 正常
             } else {
                 for (uint256 i = 0; i < ids.length; i++) {
