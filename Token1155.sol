@@ -269,16 +269,16 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     }
 
     // 铸币同时设置uri 校验代币是否存在 如果已经存在只能调用增发方法
-    function mintExt(
+    function mintExtension(
         address[] calldata to, // 可以同时给多个地址铸币
         uint256 id,
         uint256[] calldata amounts, // 每个地址数量收到的代币可以不同
         string calldata tokenUri,
         bytes memory data
-    ) external mintPermissionVerified {
+    ) external {
         // 不使用baseUri而是为每种代币单独设置uri情况下 需要该uri非空
         require(bytes(tokenUri).length > 0, Empty_URI);
-        // 为了避免增发时覆盖掉同种类代币的uri 已经存在的代币种类无法使用此方法铸造 调用mint方法(因为改方法不传uri参数)即可
+        // 为了避免增发时覆盖掉同种类代币的uri 已经存在的代币种类无法使用此方法铸造 调用mintExist方法(因为该方法不传uri参数)即可
         require(bytes(uriMap[id]).length == 0, Token_Exists);
 
         if (to.length == 1) {
@@ -303,37 +303,34 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         uriMap[id] = tokenUri;
     }
     
-    // 批量铸币同时为每种代币设置uri
-    function mintBatchExt(
-        address to,
-        uint256[] memory ids,
+    // 增发代币
+    function mintExist(
+        address[] calldata to,
+        uint256 id,
         uint256[] memory amounts,
-        string[] calldata uris,
         bytes memory data
-    ) external
-    mintPermissionVerified
-    toEmptyAddressCheck(to)
-    lengthCheck(ids.length, amounts.length)
-    lengthCheck(ids.length, uris.length)
-    {
-        address operator = _msgSender();
+    ) external {
+        // 增发代币需要保证该代币已铸造过
+        require(bytes(uriMap[id]).length > 0, Token_Not_Exists);
 
-        _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
-
-        for (uint256 i = 0; i < ids.length; i++) {
-            _balances[ids[i]][to] += amounts[i];
-            // 不使用baseUri而是为每种代币单独设置uri情况下 需要该uri非空
-            require(bytes(uris[i]).length > 0, Empty_URI);
-            // 已经存在的代币种类无法使用此方法铸造
-            require(bytes(uriMap[ids[i]]).length == 0, Token_Exists);
-            uriMap[ids[i]] = uris[i];
+        // 跟mintExtension方法基本一致
+        if (to.length == 1) {
+            require(amounts.length == 1, Amounts_To_Length_Mismatch_When_To_One);
+            mint(to[0], id, amounts[0], data);
+        } else {
+            if (amounts.length == 1) {
+                // 每一个地址都得到同样数量的代币
+                for (uint256 i = 0; i < to.length; i++) {
+                    mint(to[i], id, amounts[0], data);
+                }
+            } else {
+                // 每个地址得到的代币数量不同
+                require(to.length == amounts.length, Amounts_To_Length_Mismatch);
+                for (uint256 i = 0; i < to.length; i++) {
+                    mint(to[i], id, amounts[i], data);
+                }
+            }
         }
-
-        // emit TransferBatch(operator, address(0), to, ids, amounts);
-
-        _afterTokenTransfer(operator, address(0), to, ids, amounts, data);
-
-        _doSafeBatchTransferAcceptanceCheck(operator, address(0), to, ids, amounts, data);
     }
     // --- demand end ---
 
@@ -343,7 +340,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         uint256 id,
         uint256 amount,
         bytes memory data
-    ) public mintPermissionVerified toEmptyAddressCheck(to) {
+    ) internal mintPermissionVerified toEmptyAddressCheck(to) {
 
         // nft 数量只能为1，且未发行过
         // if (isNFT(id)) {
