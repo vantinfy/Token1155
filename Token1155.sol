@@ -59,6 +59,10 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
     string constant Token_Exists = "\xE8\xAF\xA5\xE4\xBB\xA3\xE5\xB8\x81\x69\x64\xE5\xB7\xB2\xE7\xBB\x8F\xE5\xAD\x98\xE5\x9C\xA8";
     // The token id does not exist 该代币id不存在
     string constant Token_Not_Exists = "\xE8\xAF\xA5\xE4\xBB\xA3\xE5\xB8\x81\x69\x64\xE4\xB8\x8D\xE5\xAD\x98\xE5\x9C\xA8";
+    // amounts.length should be the same with to.length when to.length=1 当to长度为1时amounts长度也应为1
+    string constant Amounts_To_Lengths_Mismatch_When_To_One = "\xE5\xBD\x93\x74\x6F\xE9\x95\xBF\xE5\xBA\xA6\xE4\xB8\xBA\x31\xE6\x97\xB6\x61\x6D\x6F\x75\x6E\x74\x73\xE9\x95\xBF\xE5\xBA\xA6\xE4\xB9\x9F\xE5\xBA\x94\xE4\xB8\xBA\x31";
+    // amounts.length should be the same with to.length amounts长度应与to长度一致
+    string constant Amounts_To_Lengths_Mismatch = "\x61\x6D\x6F\x75\x6E\x74\x73\xE9\x95\xBF\xE5\xBA\xA6\xE5\xBA\x94\xE4\xB8\x8E\x74\x6F\xE9\x95\xBF\xE5\xBA\xA6\xE4\xB8\x80\xE8\x87\xB4";
 
 
     // 初始化构造方法
@@ -104,11 +108,10 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
             super.supportsInterface(interfaceId); // super来自erc165，会判断是否支持165接口
     }
 
-    // IERC1155MetadataURI---Clients calling this function must replace the `\{id\}` substring with the actual token type ID.
+    // IERC1155MetadataURI---查询某个代币类别的uri Clients calling this function must replace the `\{id\}` substring with the actual token type ID.
     function uri(uint256 id) public view virtual override returns (string memory) {
-        // isNFT(id);
-        id;
-        return _baseuri;
+        // isNFT(id); 
+        return uriMap[id];
     }
 
     // 查询地址不能为空
@@ -265,36 +268,39 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         uriMap[id] = newuri;
     }
 
-    // 查询某个代币类别的uri
-    function queryURI(uint256 id) external view returns (string memory) {
-        return uriMap[id];
-    }
-
     // 铸币同时设置uri 校验代币是否存在 如果已经存在只能调用增发方法
     function mintExt(
-        address to,
+        address[] calldata to, // 可以同时给多个地址铸币
         uint256 id,
-        uint256 amount,
+        uint256[] calldata amounts, // 每个地址数量收到的代币可以不同
         string calldata tokenUri,
         bytes memory data
-    ) external mintPermissionVerified toEmptyAddressCheck(to) {
+    ) external mintPermissionVerified {
         // 不使用baseUri而是为每种代币单独设置uri情况下 需要该uri非空
         require(bytes(tokenUri).length > 0, Empty_URI);
         // 为了避免增发时覆盖掉同种类代币的uri 已经存在的代币种类无法使用此方法铸造 调用mint方法(因为改方法不传uri参数)即可
         require(bytes(uriMap[id]).length == 0, Token_Exists);
-        address operator = _msgSender();
-        uint256[] memory ids = _asSingletonArray(id);
-        uint256[] memory amounts = _asSingletonArray(amount);
 
-        _beforeTokenTransfer(operator, address(0), to, ids, amounts, data);
+        if (to.length == 1) {
+            require(amounts.length == 1, Amounts_To_Lengths_Mismatch_When_To_One);
+            mint(to[0], id, amounts[0], data);
+        } else {
+            if (amounts.length == 1) {
+                // 每一个地址都得到同样数量的代币
+                for (uint256 i = 0; i < to.length; i++) {
+                    mint(to[i], id, amounts[0], data);
+                }
+            } else {
+                // 每个地址得到的代币数量不同
+                require(to.length == amounts.length, Amounts_To_Lengths_Mismatch);
+                for (uint256 i = 0; i < to.length; i++) {
+                    mint(to[i], id, amounts[i], data);
+                }
+            }
+        }
 
-        _balances[id][to] += amount;
+        // uriMap增加键值对
         uriMap[id] = tokenUri;
-        emit TransferSingle(operator, address(0), to, id, amount);
-
-        _afterTokenTransfer(operator, address(0), to, ids, amounts, data);
-
-        _doSafeTransferAcceptanceCheck(operator, address(0), to, id, amount, data);
     }
     
     // 批量铸币同时为每种代币设置uri
@@ -337,7 +343,7 @@ contract Token1155 is Context, ERC165, IERC1155, IERC1155MetadataURI, AccessCont
         uint256 id,
         uint256 amount,
         bytes memory data
-    ) external mintPermissionVerified toEmptyAddressCheck(to) {
+    ) public mintPermissionVerified toEmptyAddressCheck(to) {
 
         // nft 数量只能为1，且未发行过
         // if (isNFT(id)) {
