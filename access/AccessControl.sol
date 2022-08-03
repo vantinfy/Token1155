@@ -34,6 +34,9 @@ contract AccessControl is Context {
         _;
     }
 
+    // 合约拥有权转移事件
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
     // ACL开关
     function enableACL(bool enable) public onlyOwner {
         switchOn = enable;
@@ -42,6 +45,13 @@ contract AccessControl is Context {
     // 合约持有者
     function owner() public view virtual returns (address) {
         return _owner;
+    }
+
+    // 合约所有权转移
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "Ownership can not transfer to zero address");
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
     }
 
     // 添加可铸币账号
